@@ -14,6 +14,8 @@ import (
 // Prevents a RLN ZK proof generated for one application to be re-used in another one.
 var RLN_IDENTIFIER = [32]byte{166, 140, 43, 8, 8, 22, 206, 113, 151, 128, 118, 40, 119, 197, 218, 174, 11, 117, 84, 228, 96, 211, 212, 140, 145, 104, 146, 99, 24, 192, 217, 4}
 
+var DEFAULT_USER_MESSAGE_LIMIT = uint32(10)
+
 // RLN represents the context used for rln.
 type RLN struct {
 	w *link.RLNWrapper
@@ -91,12 +93,14 @@ func (r *RLN) InitTreeWithMembers(idComms []IDCommitment) error {
 	return nil
 }
 
-func toIdentityCredential(generatedKeys []byte) (*IdentityCredential, error) {
+func toIdentityCredential(generatedKeys []byte, userMessageLimit uint32) (*IdentityCredential, error) {
+	// add user message limit
 	key := &IdentityCredential{
-		IDTrapdoor:   [32]byte{},
-		IDNullifier:  [32]byte{},
-		IDSecretHash: [32]byte{},
-		IDCommitment: [32]byte{},
+		IDTrapdoor:       [32]byte{},
+		IDNullifier:      [32]byte{},
+		IDSecretHash:     [32]byte{},
+		IDCommitment:     [32]byte{},
+		UserMessageLimit: userMessageLimit,
 	}
 
 	if len(generatedKeys) != 32*4 {
@@ -113,23 +117,45 @@ func toIdentityCredential(generatedKeys []byte) (*IdentityCredential, error) {
 
 // MembershipKeyGen generates a IdentityCredential that can be used for the
 // registration into the rln membership contract. Returns an error if the key generation fails
-func (r *RLN) MembershipKeyGen() (*IdentityCredential, error) {
+// Accepts an optional parameter that sets the user message limit which defaults
+// to DEFAULT_USER_MESSAGE_LIMIT
+func (r *RLN) MembershipKeyGen(params ...uint32) (*IdentityCredential, error) {
+	var userMessageLimit uint32
+	if len(params) == 1 {
+		userMessageLimit = params[0]
+	} else if len(params) == 0 {
+		userMessageLimit = DEFAULT_USER_MESSAGE_LIMIT
+	} else {
+		return nil, errors.New("just one user message limit is allowed")
+	}
+
 	generatedKeys := r.w.ExtendedKeyGen()
 	if generatedKeys == nil {
 		return nil, errors.New("error in key generation")
 	}
-	return toIdentityCredential(generatedKeys)
+	return toIdentityCredential(generatedKeys, userMessageLimit)
 }
 
 // SeededMembershipKeyGen generates a deterministic IdentityCredential using a seed
 // that can be used for the registration into the rln membership contract.
 // Returns an error if the key generation fails
-func (r *RLN) SeededMembershipKeyGen(seed []byte) (*IdentityCredential, error) {
+// Accepts an optional parameter that sets the user message limit which defaults
+// to DEFAULT_USER_MESSAGE_LIMIT
+func (r *RLN) SeededMembershipKeyGen(seed []byte, params ...uint32) (*IdentityCredential, error) {
+	var userMessageLimit uint32
+	if len(params) == 1 {
+		userMessageLimit = params[0]
+	} else if len(params) == 0 {
+		userMessageLimit = DEFAULT_USER_MESSAGE_LIMIT
+	} else {
+		return nil, errors.New("just one user message limit is allowed")
+	}
+
 	generatedKeys := r.w.ExtendedSeededKeyGen(seed)
 	if generatedKeys == nil {
 		return nil, errors.New("error in key generation")
 	}
-	return toIdentityCredential(generatedKeys)
+	return toIdentityCredential(generatedKeys, userMessageLimit)
 }
 
 // appendLength returns length prefixed version of the input with the following format
@@ -181,65 +207,60 @@ func (r *RLN) Poseidon(input ...[]byte) (MerkleNode, error) {
 	return result, nil
 }
 
-func (r *RLN) ExtractMetadata(proof RateLimitProof) (ProofMetadata, error) {
-	externalNullifierRes, err := r.Poseidon(proof.Epoch[:], proof.RLNIdentifier[:])
-	if err != nil {
-		return ProofMetadata{}, fmt.Errorf("could not construct the external nullifier: %w", err)
-	}
-
-	return ProofMetadata{
-		Nullifier:         proof.Nullifier,
-		ShareX:            proof.ShareX,
-		ShareY:            proof.ShareY,
-		ExternalNullifier: externalNullifierRes,
-	}, nil
-}
-
 // GenerateProof generates a proof for the RLN given a KeyPair and the index in a merkle tree.
 // The output will containt the proof data and should be parsed as |proof<128>|root<32>|epoch<32>|share_x<32>|share_y<32>|nullifier<32>|
 // integers wrapped in <> indicate value sizes in bytes
-func (r *RLN) GenerateProof(data []byte, key IdentityCredential, index MembershipIndex, epoch Epoch) (*RateLimitProof, error) {
-	input := serialize(key.IDSecretHash, index, epoch, data)
+func (r *RLN) GenerateProof(
+	data []byte,
+	key IdentityCredential,
+	index MembershipIndex,
+	epoch Epoch,
+	messageId uint32) (*RateLimitProof, error) {
+
+	externalNullifierInput, err := r.Poseidon(epoch[:], RLN_IDENTIFIER[:])
+	if err != nil {
+		return nil, fmt.Errorf("could not construct the external nullifier: %w", err)
+	}
+
+	input := serialize(key.IDSecretHash, index, key.UserMessageLimit, messageId, externalNullifierInput, data)
 	proofBytes, err := r.w.GenerateRLNProof(input)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(proofBytes) != 320 {
-		return nil, errors.New("invalid proof generated")
+	if len(proofBytes) != 288 {
+		return nil, fmt.Errorf("invalid proof generated. size: %d expected: 288",
+			len(proofBytes))
 	}
 
-	// parse the proof as [ proof<128> | root<32> | epoch<32> | share_x<32> | share_y<32> | nullifier<32> | rln_identifier<32> ]
+	// parse proof taken from: https://github.com/vacp2p/zerokit/blob/v0.5.0/rln/src/public.rs#L750
+	// [ proof<128> | root<32> | external_nullifier<32> | x<32> | y<32> | nullifier<32>]
 	proofOffset := 128
 	rootOffset := proofOffset + 32
-	epochOffset := rootOffset + 32
-	shareXOffset := epochOffset + 32
+	externalNullifierOffset := rootOffset + 32
+	shareXOffset := externalNullifierOffset + 32
 	shareYOffset := shareXOffset + 32
 	nullifierOffset := shareYOffset + 32
-	rlnIdentifierOffset := nullifierOffset + 32
 
 	var zkproof ZKSNARK
 	var proofRoot, shareX, shareY MerkleNode
-	var epochR Epoch
+	var externalNullifier Nullifier
 	var nullifier Nullifier
-	var rlnIdentifier RLNIdentifier
 
 	copy(zkproof[:], proofBytes[0:proofOffset])
 	copy(proofRoot[:], proofBytes[proofOffset:rootOffset])
-	copy(epochR[:], proofBytes[rootOffset:epochOffset])
-	copy(shareX[:], proofBytes[epochOffset:shareXOffset])
+	copy(externalNullifier[:], proofBytes[rootOffset:externalNullifierOffset])
+	copy(shareX[:], proofBytes[externalNullifierOffset:shareXOffset])
 	copy(shareY[:], proofBytes[shareXOffset:shareYOffset])
 	copy(nullifier[:], proofBytes[shareYOffset:nullifierOffset])
-	copy(rlnIdentifier[:], proofBytes[nullifierOffset:rlnIdentifierOffset])
 
 	return &RateLimitProof{
-		Proof:         zkproof,
-		MerkleRoot:    proofRoot,
-		Epoch:         epochR,
-		ShareX:        shareX,
-		ShareY:        shareY,
-		Nullifier:     nullifier,
-		RLNIdentifier: rlnIdentifier,
+		Proof:             zkproof,
+		MerkleRoot:        proofRoot,
+		ExternalNullifier: externalNullifier,
+		ShareX:            shareX,
+		ShareY:            shareY,
+		Nullifier:         nullifier,
 	}, nil
 }
 
@@ -248,6 +269,8 @@ func (r *RLN) GenerateProof(data []byte, key IdentityCredential, index Membershi
 // input [ id_secret_hash<32> | num_elements<8> | path_elements<var1> | num_indexes<8> | path_indexes<var2> | x<32> | epoch<32> | rln_identifier<32> ]
 // output [ proof<128> | root<32> | epoch<32> | share_x<32> | share_y<32> | nullifier<32> | rln_identifier<32> ]
 func (r *RLN) GenerateRLNProofWithWitness(witness RLNWitnessInput) (*RateLimitProof, error) {
+	// TODO: Will be implemented once custom witness is supported in RLN v2
+	return nil, errors.New("not implemented")
 
 	proofBytes, err := r.w.GenerateRLNProofWithWitness(witness.serialize())
 	if err != nil {
@@ -282,13 +305,11 @@ func (r *RLN) GenerateRLNProofWithWitness(witness RLNWitnessInput) (*RateLimitPr
 	copy(rlnIdentifier[:], proofBytes[nullifierOffset:rlnIdentifierOffset])
 
 	return &RateLimitProof{
-		Proof:         zkproof,
-		MerkleRoot:    proofRoot,
-		Epoch:         epochR,
-		ShareX:        shareX,
-		ShareY:        shareY,
-		Nullifier:     nullifier,
-		RLNIdentifier: rlnIdentifier,
+		Proof:      zkproof,
+		MerkleRoot: proofRoot,
+		ShareX:     shareX,
+		ShareY:     shareY,
+		Nullifier:  nullifier,
 	}, nil
 
 }
@@ -368,9 +389,17 @@ func (r *RLN) RecoverIDSecret(proof1 RateLimitProof, proof2 RateLimitProof) (IDS
 	return result, nil
 }
 
-// InsertMember adds the member to the tree
-func (r *RLN) InsertMember(idComm IDCommitment) error {
-	insertionSuccess := r.w.SetNextLeaf(idComm[:])
+// InsertMember adds the member to the tree. The leaf is made of
+// the id commitment and the user message limit
+func (r *RLN) InsertMember(idComm IDCommitment, userMessageLimit uint32) error {
+	userMessageLimitBytes := SerializeUint32(userMessageLimit)
+
+	hashedLeaf, err := r.Poseidon(idComm[:], userMessageLimitBytes[:])
+	if err != nil {
+		return err
+	}
+
+	insertionSuccess := r.w.SetNextLeaf(hashedLeaf[:])
 	if !insertionSuccess {
 		return errors.New("could not insert member")
 	}
@@ -476,9 +505,9 @@ func (r *RLN) GetMerkleProof(index MembershipIndex) (MerkleProof, error) {
 }
 
 // AddAll adds members to the Merkle tree
-func (r *RLN) AddAll(list []IDCommitment) error {
+func (r *RLN) AddAll(list []IdentityCredential) error {
 	for _, member := range list {
-		if err := r.InsertMember(member); err != nil {
+		if err := r.InsertMember(member.IDCommitment, member.UserMessageLimit); err != nil {
 			return err
 		}
 	}
@@ -520,7 +549,7 @@ func CreateMembershipList(n int) ([]IdentityCredential, MerkleNode, error) {
 		output = append(output, *keypair)
 
 		// insert the key to the Merkle tree
-		if err := rln.InsertMember(keypair.IDCommitment); err != nil {
+		if err := rln.InsertMember(keypair.IDCommitment, keypair.UserMessageLimit); err != nil {
 			return nil, MerkleNode{}, err
 		}
 	}

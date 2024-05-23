@@ -1,6 +1,7 @@
 package rln
 
 import (
+	"encoding/binary"
 	"encoding/hex"
 	"hash"
 	"math/big"
@@ -180,4 +181,11 @@ func HashToBN255(data []byte) [32]byte {
 	fixexLen := [32]byte{}
 	copy(fixexLen[:], revert(frBN254Bytes[:]))
 	return fixexLen
+}
+
+func SerializeUint32(input uint32) [32]byte {
+	var byte32Type [32]byte
+	binary.LittleEndian.PutUint32(byte32Type[0:], input)
+
+	return byte32Type
 }

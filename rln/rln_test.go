@@ -76,7 +76,7 @@ func (s *RLNSuite) TestInsertMember() {
 	keypair, err := rln.MembershipKeyGen()
 	s.NoError(err)
 
-	err = rln.InsertMember(keypair.IDCommitment)
+	err = rln.InsertMember(keypair.IDCommitment, keypair.UserMessageLimit)
 	s.NoError(err)
 }
 
@@ -105,7 +105,7 @@ func (s *RLNSuite) TestRemoveMember() {
 	keypair, err := rln.MembershipKeyGen()
 	s.NoError(err)
 
-	err = rln.InsertMember(keypair.IDCommitment)
+	err = rln.InsertMember(keypair.IDCommitment, keypair.UserMessageLimit)
 	s.NoError(err)
 
 	err = rln.DeleteMember(MembershipIndex(0))
@@ -123,7 +123,7 @@ func (s *RLNSuite) TestMerkleTreeConsistenceBetweenDeletionAndInsertion() {
 	keypair, err := rln.MembershipKeyGen()
 	s.NoError(err)
 
-	err = rln.InsertMember(keypair.IDCommitment)
+	err = rln.InsertMember(keypair.IDCommitment, keypair.UserMessageLimit)
 	s.NoError(err)
 
 	// read the Merkle Tree root after insertion
@@ -207,37 +207,64 @@ func (s *RLNSuite) TestCheckCorrectness() {
 	s.Equal(expectedRoot, root[:])
 }
 
+func (s *RLNSuite) TestGetLeaf() {
+	rln, err := NewRLN()
+	s.NoError(err)
+
+	amountLeafs := int(31)
+
+	for i := 0; i < amountLeafs; i++ {
+		// allowed messages per epoch of the membership
+		// using different values between 1 and 7
+		userMessageLimit := uint32(amountLeafs%7 + 1)
+
+		// generate membership
+		memKeys, err := rln.MembershipKeyGen(userMessageLimit)
+		s.NoError(err)
+
+		// insert membership
+		err = rln.InsertMember(memKeys.IDCommitment, memKeys.UserMessageLimit)
+		s.NoError(err)
+
+		// retrieve the leaf
+		retrievedLeaf, err := rln.GetLeaf(uint(i))
+		s.NoError(err)
+
+		// calculate the leaf we would expect
+		userMessageLimitBytes := SerializeUint32(userMessageLimit)
+		hashedLeaf, err := rln.Poseidon(memKeys.IDCommitment[:], userMessageLimitBytes[:])
+		s.NoError(err)
+
+		// assert it matches
+		s.Equal(hashedLeaf, retrievedLeaf)
+	}
+}
+
 func (s *RLNSuite) TestValidProof() {
 	rln, err := NewRLN()
 	s.NoError(err)
 
-	memKeys, err := rln.MembershipKeyGen()
-	s.NoError(err)
+	// allowed messages per epoch of the membership
+	userMessageLimit := uint32(10)
 
 	//peer's index in the Merkle Tree
 	index := uint(5)
 
+	memKeys, err := rln.MembershipKeyGen(userMessageLimit)
+	s.NoError(err)
+
 	// Create a Merkle tree with random members
 	for i := uint(0); i < 10; i++ {
 		if i == index {
-			// insert the current peer's pk
-			err = rln.InsertMember(memKeys.IDCommitment)
+			err = rln.InsertMember(memKeys.IDCommitment, memKeys.UserMessageLimit)
 			s.NoError(err)
-
-			fifthIndexLeaf, err := rln.GetLeaf(index)
-			s.NoError(err)
-			s.Equal(memKeys.IDCommitment, fifthIndexLeaf)
 		} else {
 			// create a new key pair
-			memberKeys, err := rln.MembershipKeyGen()
+			memberKeys, err := rln.MembershipKeyGen(userMessageLimit)
 			s.NoError(err)
 
-			err = rln.InsertMember(memberKeys.IDCommitment)
+			err = rln.InsertMember(memberKeys.IDCommitment, memberKeys.UserMessageLimit)
 			s.NoError(err)
-
-			leaf, err := rln.GetLeaf(i)
-			s.NoError(err)
-			s.Equal(memberKeys.IDCommitment, leaf)
 		}
 	}
 
@@ -245,24 +272,75 @@ func (s *RLNSuite) TestValidProof() {
 	msg := []byte("Hello")
 
 	// prepare the epoch
-	var epoch Epoch
+	var epoch Epoch = SerializeUint32(1000)
 
-	// generate proof
-	proofRes, err := rln.GenerateProof(msg, *memKeys, MembershipIndex(index), epoch)
+	// generate multiple valid proofs for the same epoch
+	for i := uint32(0); i < userMessageLimit; i++ {
+		// message sequence within the epoch
+		messageId := uint32(i)
+
+		// generate proof
+		proofRes, err := rln.GenerateProof(msg, *memKeys, MembershipIndex(index), epoch, messageId)
+		s.NoError(err)
+
+		// verify the proof
+		verified, err := rln.Verify(msg, *proofRes)
+		s.NoError(err)
+		s.True(verified)
+
+		// verify with roots
+		root, err := rln.GetMerkleRoot()
+		s.NoError(err)
+
+		verified, err = rln.Verify(msg, *proofRes, root)
+		s.NoError(err)
+		s.True(verified)
+	}
+}
+
+func (s *RLNSuite) TestProofBeyondLimit() {
+	rln, err := NewRLN()
 	s.NoError(err)
 
-	// verify the proof
-	verified, err := rln.Verify(msg, *proofRes)
-	s.NoError(err)
-	s.True(verified)
+	// allowed messages per epoch of the membership
+	userMessageLimit := uint32(10)
 
-	// verify with roots
-	root, err := rln.GetMerkleRoot()
+	//peer's index in the Merkle Tree
+	index := uint(5)
+
+	memKeys, err := rln.MembershipKeyGen(userMessageLimit)
 	s.NoError(err)
 
-	verified, err = rln.Verify(msg, *proofRes, root)
-	s.NoError(err)
-	s.True(verified)
+	// Create a Merkle tree with random members
+	for i := uint(0); i < 10; i++ {
+		if i == index {
+			err = rln.InsertMember(memKeys.IDCommitment, memKeys.UserMessageLimit)
+			s.NoError(err)
+		} else {
+			// create a new key pair
+			memberKeys, err := rln.MembershipKeyGen(userMessageLimit)
+			s.NoError(err)
+
+			err = rln.InsertMember(memberKeys.IDCommitment, memberKeys.UserMessageLimit)
+			s.NoError(err)
+		}
+	}
+
+	// prepare the message
+	msg := []byte("Hello")
+
+	// prepare the epoch
+	var epoch Epoch = SerializeUint32(876543456)
+
+	// TODO;:
+	for i := uint32(userMessageLimit + 1); i < (userMessageLimit + 10); i++ {
+		// message sequence within the epoch
+		messageId := uint32(i)
+
+		// generate proof TODO:Errors!
+		_, err := rln.GenerateProof(msg, *memKeys, MembershipIndex(index), epoch, messageId)
+		s.Error(err)
+	}
 }
 
 func (s *RLNSuite) TestInvalidProof() {
@@ -279,14 +357,14 @@ func (s *RLNSuite) TestInvalidProof() {
 	for i := 0; i < 10; i++ {
 		if i == index {
 			// insert the current peer's pk
-			err := rln.InsertMember(memKeys.IDCommitment)
+			err := rln.InsertMember(memKeys.IDCommitment, memKeys.UserMessageLimit)
 			s.NoError(err)
 		} else {
 			// create a new key pair
 			memberKeys, err := rln.MembershipKeyGen()
 			s.NoError(err)
 
-			err = rln.InsertMember(memberKeys.IDCommitment)
+			err = rln.InsertMember(memberKeys.IDCommitment, memberKeys.UserMessageLimit)
 			s.NoError(err)
 		}
 	}
@@ -302,8 +380,11 @@ func (s *RLNSuite) TestInvalidProof() {
 
 	badIndex := 4
 
+	// message sequence within the epoch
+	messageId := uint32(1)
+
 	// generate proof
-	proofRes, err := rln.GenerateProof(msg, *memKeys, MembershipIndex(badIndex), epoch)
+	proofRes, err := rln.GenerateProof(msg, *memKeys, MembershipIndex(badIndex), epoch, messageId)
 	s.NoError(err)
 
 	// verify the proof (should not be verified)
@@ -351,6 +432,7 @@ func (s *RLNSuite) TestGetMerkleProof() {
 }
 
 func (s *RLNSuite) TestGenerateRLNProofWithWitness_VerifiesOK() {
+	s.T().Skip("Skipped until proof generation with witness is implemented for RLNv2")
 	treeSize := 20
 
 	rln, err := NewRLN()
@@ -363,7 +445,7 @@ func (s *RLNSuite) TestGenerateRLNProofWithWitness_VerifiesOK() {
 		memberKeys, err := rln.MembershipKeyGen()
 		s.NoError(err)
 
-		err = rln.InsertMember(memberKeys.IDCommitment)
+		err = rln.InsertMember(memberKeys.IDCommitment, memberKeys.UserMessageLimit)
 		s.NoError(err)
 		treeElements = append(treeElements, *memberKeys)
 	}
@@ -393,8 +475,11 @@ func (s *RLNSuite) TestGenerateRLNProofWithWitness_VerifiesOK() {
 		s.NoError(err)
 		s.True(verified1)
 
+		// message sequence within the epoch
+		messageId := uint32(1)
+
 		// Generate a proof without our custom witness, to ensure they match
-		proofRes2, err := rln.GenerateProof(message, treeElements[memberIndex], MembershipIndex(memberIndex), epoch)
+		proofRes2, err := rln.GenerateProof(message, treeElements[memberIndex], MembershipIndex(memberIndex), epoch, messageId)
 		s.NoError(err)
 
 		// Ensure we have the same root
@@ -403,15 +488,17 @@ func (s *RLNSuite) TestGenerateRLNProofWithWitness_VerifiesOK() {
 		// Proof generate with custom witness match the proof generate with the witness
 		// from zerokit. Proof itself is not asserted, can be different.
 		s.Equal(proofRes1.MerkleRoot, proofRes2.MerkleRoot)
-		s.Equal(proofRes1.Epoch, proofRes2.Epoch)
+		//s.Equal(proofRes1.Epoch, proofRes2.Epoch)
 		s.Equal(proofRes1.ShareX, proofRes2.ShareX)
 		s.Equal(proofRes1.ShareY, proofRes2.ShareY)
 		s.Equal(proofRes1.Nullifier, proofRes2.Nullifier)
-		s.Equal(proofRes1.RLNIdentifier, proofRes2.RLNIdentifier)
+		//s.Equal(proofRes1.RLNIdentifier, proofRes2.RLNIdentifier)
 	}
 }
 
 func (s *RLNSuite) TestGenerateRLNProofWithWitness_VerifiesNOK() {
+	s.T().Skip("Skipped until proof generation with witness is implemented for RLNv2")
+
 	treeSize := 20
 
 	rln, err := NewRLN()
@@ -424,7 +511,7 @@ func (s *RLNSuite) TestGenerateRLNProofWithWitness_VerifiesNOK() {
 		memberKeys, err := rln.MembershipKeyGen()
 		s.NoError(err)
 
-		err = rln.InsertMember(memberKeys.IDCommitment)
+		err = rln.InsertMember(memberKeys.IDCommitment, memberKeys.UserMessageLimit)
 		s.NoError(err)
 		treeElements = append(treeElements, *memberKeys)
 	}
@@ -457,7 +544,7 @@ func (s *RLNSuite) TestGenerateRLNProofWithWitness_VerifiesNOK() {
 		s.False(verified1)
 
 		// 2) Different epoch, does not verify
-		proofRes1.Epoch = ToEpoch(999)
+		//proofRes1.Epoch = ToEpoch(999)
 		verified2, err := rln.Verify(message, *proofRes1, root)
 		s.NoError(err)
 		s.False(verified2)

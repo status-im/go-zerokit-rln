@@ -36,12 +36,19 @@ type IdentityCredential = struct {
 	// Poseidon hash function implemented in rln lib
 	// more details in https://hackmd.io/tMTLMYmTR5eynw2lwK9n1w?view#Membership
 	IDCommitment IDCommitment `json:"idCommitment"`
+	// user's allowed messages per epoch, added in RLN v2
+	UserMessageLimit uint32 `json:"userMessageLimit"`
 }
 
 func IdentityCredentialEquals(i IdentityCredential, i2 IdentityCredential) bool {
-	return bytes.Equal(i.IDTrapdoor[:], i2.IDTrapdoor[:]) && bytes.Equal(i.IDNullifier[:], i2.IDNullifier[:]) && bytes.Equal(i.IDSecretHash[:], i2.IDSecretHash[:]) && bytes.Equal(i.IDCommitment[:], i2.IDCommitment[:])
+	return bytes.Equal(i.IDTrapdoor[:], i2.IDTrapdoor[:]) &&
+		bytes.Equal(i.IDNullifier[:], i2.IDNullifier[:]) &&
+		bytes.Equal(i.IDSecretHash[:], i2.IDSecretHash[:]) &&
+		bytes.Equal(i.IDCommitment[:], i2.IDCommitment[:]) &&
+		i.UserMessageLimit == i2.UserMessageLimit
 }
 
+// Equivalent plus proof: https://github.com/vacp2p/zerokit/blob/v0.5.0/rln/src/protocol.rs#L52
 type RateLimitProof struct {
 	// RateLimitProof holds the public inputs to rln circuit as
 	// defined in https://hackmd.io/tMTLMYmTR5eynw2lwK9n1w?view#Public-Inputs
@@ -50,7 +57,7 @@ type RateLimitProof struct {
 	// the root of Merkle tree used for the generation of the `proof`
 	MerkleRoot MerkleNode `json:"root"`
 	// the epoch used for the generation of the `proof`
-	Epoch Epoch `json:"epoch"`
+	ExternalNullifier Nullifier `json:"external_nullifier"`
 	// shareX and shareY are shares of user's identity key
 	// these shares are created using Shamir secret sharing scheme
 	// see details in https://hackmd.io/tMTLMYmTR5eynw2lwK9n1w?view#Linear-Equation-amp-SSS
@@ -59,8 +66,6 @@ type RateLimitProof struct {
 	// nullifier enables linking two messages published during the same epoch
 	// see details in https://hackmd.io/tMTLMYmTR5eynw2lwK9n1w?view#Nullifiers
 	Nullifier Nullifier `json:"nullifier"`
-	// Application specific RLN Identifier
-	RLNIdentifier RLNIdentifier `json:"rlnIdentifier"`
 }
 
 type MerkleProof struct {

@@ -4,7 +4,11 @@
 
 package link
 
-import r "github.com/waku-org/go-zerokit-rln-arm/rln"
+import (
+	"errors"
+
+	r "github.com/waku-org/go-zerokit-rln-arm/rln"
+)
 
 type RLNWrapper struct {
 	ffi *r.RLN
@@ -91,7 +95,8 @@ func (i RLNWrapper) GenerateRLNProof(input []byte) ([]byte, error) {
 }
 
 func (i RLNWrapper) GenerateRLNProofWithWitness(input []byte) ([]byte, error) {
-	return i.ffi.GenerateRLNProofWithWitness(input)
+	return nil, errors.New("not implemented")
+	//return i.ffi.GenerateRLNProofWithWitness(input)
 }
 
 func (i RLNWrapper) VerifyWithRoots(input []byte, roots []byte) (bool, error) {
