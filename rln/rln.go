@@ -119,11 +119,11 @@ func toIdentityCredential(generatedKeys []byte, userMessageLimit uint32) (*Ident
 // registration into the rln membership contract. Returns an error if the key generation fails
 // Accepts an optional parameter that sets the user message limit which defaults
 // to DEFAULT_USER_MESSAGE_LIMIT
-func (r *RLN) MembershipKeyGen(params ...uint32) (*IdentityCredential, error) {
+func (r *RLN) MembershipKeyGen(userMessageLimitParam ...uint32) (*IdentityCredential, error) {
 	var userMessageLimit uint32
-	if len(params) == 1 {
-		userMessageLimit = params[0]
-	} else if len(params) == 0 {
+	if len(userMessageLimitParam) == 1 {
+		userMessageLimit = userMessageLimitParam[0]
+	} else if len(userMessageLimitParam) == 0 {
 		userMessageLimit = DEFAULT_USER_MESSAGE_LIMIT
 	} else {
 		return nil, errors.New("just one user message limit is allowed")
@@ -141,11 +141,11 @@ func (r *RLN) MembershipKeyGen(params ...uint32) (*IdentityCredential, error) {
 // Returns an error if the key generation fails
 // Accepts an optional parameter that sets the user message limit which defaults
 // to DEFAULT_USER_MESSAGE_LIMIT
-func (r *RLN) SeededMembershipKeyGen(seed []byte, params ...uint32) (*IdentityCredential, error) {
+func (r *RLN) SeededMembershipKeyGen(seed []byte, userMessageLimitParam ...uint32) (*IdentityCredential, error) {
 	var userMessageLimit uint32
-	if len(params) == 1 {
-		userMessageLimit = params[0]
-	} else if len(params) == 0 {
+	if len(userMessageLimitParam) == 1 {
+		userMessageLimit = userMessageLimitParam[0]
+	} else if len(userMessageLimitParam) == 0 {
 		userMessageLimit = DEFAULT_USER_MESSAGE_LIMIT
 	} else {
 		return nil, errors.New("just one user message limit is allowed")
@@ -228,9 +228,10 @@ func (r *RLN) GenerateProof(
 		return nil, err
 	}
 
-	if len(proofBytes) != 288 {
-		return nil, fmt.Errorf("invalid proof generated. size: %d expected: 288",
-			len(proofBytes))
+	expectedBytes := 288
+	if len(proofBytes) != expectedBytes {
+		return nil, fmt.Errorf("invalid proof generated. size: %d expected: %d",
+			len(proofBytes), expectedBytes)
 	}
 
 	// parse proof taken from: https://github.com/vacp2p/zerokit/blob/v0.5.0/rln/src/public.rs#L750
