@@ -8,18 +8,30 @@ import (
 )
 
 // serialize converts a RateLimitProof and the data to a byte seq
-// this conversion is used in the proofGen function
-// the serialization is done as instructed in  https://github.com/kilic/rln/blob/7ac74183f8b69b399e3bc96c1ae8ab61c026dc43/src/public.rs#L146
-// [ id_key<32> | id_index<8> | epoch<32> | signal_len<8> | signal<var> ]
-func serialize(idKey IDSecretHash, memIndex MembershipIndex, epoch Epoch, msg []byte) []byte {
+// format taken from: https://github.com/vacp2p/zerokit/blob/v0.5.0/rln/src/public.rs#L747
+// [identity_secret<32> | id_index<8> | user_message_limit<32> | message_id<32> | external_nullifier<32> | signal_len<8> | signal<var> ]
+func serialize(
+	idKey IDSecretHash,
+	memIndex MembershipIndex,
+	userMessageLimit uint32,
+	messageId uint32,
+	externalNullifier [32]byte,
+	msg []byte) []byte {
 
 	memIndexBytes := make([]byte, 8)
 	binary.LittleEndian.PutUint64(memIndexBytes, uint64(memIndex))
 
 	lenPrefMsg := appendLength(msg)
 
+	var userMessageLimitByte [32]byte
+	var messageIdByte [32]byte
+	binary.LittleEndian.PutUint32(userMessageLimitByte[0:], userMessageLimit)
+	binary.LittleEndian.PutUint32(messageIdByte[0:], messageId)
+
 	output := append(idKey[:], memIndexBytes...)
-	output = append(output, epoch[:]...)
+	output = append(output, userMessageLimitByte[:]...)
+	output = append(output, messageIdByte[:]...)
+	output = append(output, externalNullifier[:]...)
 	output = append(output, lenPrefMsg...)
 
 	return output
@@ -28,7 +40,7 @@ func serialize(idKey IDSecretHash, memIndex MembershipIndex, epoch Epoch, msg []
 // serialize converts a RateLimitProof and data to a byte seq
 // this conversion is used in the proof verification proc
 // the order of serialization is based on https://github.com/kilic/rln/blob/7ac74183f8b69b399e3bc96c1ae8ab61c026dc43/src/public.rs#L205
-// [ proof<128> | root<32> | epoch<32> | share_x<32> | share_y<32> | nullifier<32> | rln_identifier<32> | signal_len<8> | signal<var> ]
+// [ proof<128> | root<32> | external_nullifier<32> | x<32> | y<32> | nullifier<32> | signal_len<8> | signal<var> ]
 func (r RateLimitProof) serializeWithData(data []byte) []byte {
 	lenPrefMsg := appendLength(data)
 	proofBytes := r.serialize()
@@ -37,14 +49,13 @@ func (r RateLimitProof) serializeWithData(data []byte) []byte {
 }
 
 // serialize converts a RateLimitProof to a byte seq
-// [ proof<128> | root<32> | epoch<32> | share_x<32> | share_y<32> | nullifier<32> | rln_identifier<32>
+// [ proof<128> | root<32> | external_nullifier<32> | x<32> | y<32> | nullifier<32>]
 func (r RateLimitProof) serialize() []byte {
 	proofBytes := append(r.Proof[:], r.MerkleRoot[:]...)
-	proofBytes = append(proofBytes, r.Epoch[:]...)
+	proofBytes = append(proofBytes, r.ExternalNullifier[:]...)
 	proofBytes = append(proofBytes, r.ShareX[:]...)
 	proofBytes = append(proofBytes, r.ShareY[:]...)
 	proofBytes = append(proofBytes, r.Nullifier[:]...)
-	proofBytes = append(proofBytes, r.RLNIdentifier[:]...)
 	return proofBytes
 }
 

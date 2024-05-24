@@ -4,10 +4,11 @@ go 1.19
 
 require (
 	github.com/consensys/gnark-crypto v0.12.1
+	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.8.4
-	github.com/waku-org/go-zerokit-rln-apple v0.0.0-20240124080743-37fbb869c330
-	github.com/waku-org/go-zerokit-rln-arm v0.0.0-20240124081101-5e4387508113
-	github.com/waku-org/go-zerokit-rln-x86_64 v0.0.0-20240124081123-f90cfc88a1dc
+	github.com/waku-org/go-zerokit-rln-apple v0.0.0-20240523161310-d005fe7ba59c
+	github.com/waku-org/go-zerokit-rln-arm v0.0.0-20240523161300-8203361a01d0
+	github.com/waku-org/go-zerokit-rln-x86_64 v0.0.0-20240523161247-6f16d12c5a86
 	golang.org/x/crypto v0.18.0
 )
 
