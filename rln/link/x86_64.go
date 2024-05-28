@@ -6,8 +6,6 @@
 package link
 
 import (
-	"errors"
-
 	r "github.com/waku-org/go-zerokit-rln-x86_64/rln"
 )
 
@@ -96,8 +94,7 @@ func (i RLNWrapper) GenerateRLNProof(input []byte) ([]byte, error) {
 }
 
 func (i RLNWrapper) GenerateRLNProofWithWitness(input []byte) ([]byte, error) {
-	return nil, errors.New("not implemented")
-	//return i.ffi.GenerateRLNProofWithWitness(input)
+	return i.ffi.GenerateRLNProofWithWitness(input)
 }
 
 func (i RLNWrapper) VerifyWithRoots(input []byte, roots []byte) (bool, error) {

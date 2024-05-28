@@ -73,13 +73,14 @@ type MerkleProof struct {
 	PathIndexes  []uint8      `json:"pathIndexes"`
 }
 
-// Equivalent: https://github.com/vacp2p/zerokit/blob/v0.3.5/rln/src/protocol.rs#L33-L40
+// Equivalent: https://github.com/vacp2p/zerokit/blob/v0.5.0/rln/src/protocol.rs#L35
 type RLNWitnessInput struct {
-	IDSecretHash  IDSecretHash  `json:"identitySecretHash"`
-	MerkleProof   MerkleProof   `json:"merkleProof"`
-	X             [32]byte      `json:"x"`
-	Epoch         Epoch         `json:"epoch"`
-	RlnIdentifier RLNIdentifier `json:"rlnIdentifier"`
+	IDSecretHash      IDSecretHash `json:"identitySecretHash"`
+	UserMessageLimit  uint32       `json:"userMessageLimit"`
+	MessageId         uint32       `json:"messageId"`
+	MerkleProof       MerkleProof  `json:"merkleProof"`
+	X                 [32]byte     `json:"x"`
+	ExternalNullifier Nullifier    `json:"externalNullifier"`
 }
 
 type TreeDepth int

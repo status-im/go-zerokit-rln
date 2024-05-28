@@ -52,13 +52,14 @@ func TestRLNWitnessInputSerDe(t *testing.T) {
 	}
 
 	witness := RLNWitnessInput{
-		IDSecretHash:  random32(),
-		MerkleProof:   mProof,
-		X:             [32]byte{0x00},
-		Epoch:         ToEpoch(10),
-		RlnIdentifier: [32]byte{0x00},
+		IDSecretHash:      random32(),
+		UserMessageLimit:  8,
+		MessageId:         7,
+		MerkleProof:       mProof,
+		X:                 [32]byte{0x00},
+		ExternalNullifier: [32]byte{0x00},
 	}
 
 	ser := witness.serialize()
-	require.Equal(t, 32+8+depth*32+depth+8+32+32+32, len(ser))
+	require.Equal(t, 32+32+32+8+depth*32+depth+8+32+32, len(ser))
 }
