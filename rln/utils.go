@@ -11,21 +11,6 @@ import (
 	"golang.org/x/crypto/sha3"
 )
 
-func CreateWitness(
-	idSecretHash IDSecretHash,
-	data []byte,
-	epoch [32]byte,
-	merkleProof MerkleProof) RLNWitnessInput {
-
-	return RLNWitnessInput{
-		IDSecretHash:  idSecretHash,
-		MerkleProof:   merkleProof,
-		X:             HashToBN255(data),
-		Epoch:         epoch,
-		RlnIdentifier: RLN_IDENTIFIER,
-	}
-}
-
 func ToIdentityCredentials(groupKeys [][]string) ([]IdentityCredential, error) {
 	// groupKeys is  sequence of membership key tuples in the form of (identity key, identity commitment) all in the hexadecimal format
 	// the toIdentityCredentials proc populates a sequence of IdentityCredentials using the supplied groupKeys

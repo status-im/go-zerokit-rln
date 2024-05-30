@@ -266,53 +266,73 @@ func (r *RLN) GenerateProof(
 }
 
 // Returns a RLN proof with a custom witness, so no tree is required in the RLN instance
-// to calculate such proof. The witness can be created with GetMerkleProof data
-// input [ id_secret_hash<32> | num_elements<8> | path_elements<var1> | num_indexes<8> | path_indexes<var2> | x<32> | epoch<32> | rln_identifier<32> ]
-// output [ proof<128> | root<32> | epoch<32> | share_x<32> | share_y<32> | nullifier<32> | rln_identifier<32> ]
+// to calculate such proof. The witness can be created with GetMerkleProof data.
 func (r *RLN) GenerateRLNProofWithWitness(witness RLNWitnessInput) (*RateLimitProof, error) {
-	// TODO: Will be implemented once custom witness is supported in RLN v2
-	return nil, errors.New("not implemented")
-
+	// serialized as: https://github.com/vacp2p/zerokit/blob/v0.5.0/rln/src/protocol.rs#L127
+	// input [ id_secret_hash<32> | user_message_limit<32> | message_id<32> | num_elements<8> | path_elements<var1> | num_indexes<8> | path_indexes<var2> | external_nullifier<32> ]
 	proofBytes, err := r.w.GenerateRLNProofWithWitness(witness.serialize())
 	if err != nil {
 		return nil, err
 	}
 
-	if len(proofBytes) != 320 {
-		return nil, errors.New("invalid proof generated")
+	expectedBytes := 288
+	if len(proofBytes) != expectedBytes {
+		return nil, fmt.Errorf("invalid proof generated. size: %d expected: %d",
+			len(proofBytes), expectedBytes)
 	}
 
-	// parse the proof as [ proof<128> | root<32> | epoch<32> | share_x<32> | share_y<32> | nullifier<32> | rln_identifier<32> ]
+	// parse proof taken from: https://github.com/vacp2p/zerokit/blob/v0.5.0/rln/src/public.rs#L750
+	// [ proof<128> | root<32> | external_nullifier<32> | x<32> | y<32> | nullifier<32>]
 	proofOffset := 128
 	rootOffset := proofOffset + 32
-	epochOffset := rootOffset + 32
-	shareXOffset := epochOffset + 32
+	externalNullifierOffset := rootOffset + 32
+	shareXOffset := externalNullifierOffset + 32
 	shareYOffset := shareXOffset + 32
 	nullifierOffset := shareYOffset + 32
-	rlnIdentifierOffset := nullifierOffset + 32
 
 	var zkproof ZKSNARK
 	var proofRoot, shareX, shareY MerkleNode
-	var epochR Epoch
+	var externalNullifier Nullifier
 	var nullifier Nullifier
-	var rlnIdentifier RLNIdentifier
 
 	copy(zkproof[:], proofBytes[0:proofOffset])
 	copy(proofRoot[:], proofBytes[proofOffset:rootOffset])
-	copy(epochR[:], proofBytes[rootOffset:epochOffset])
-	copy(shareX[:], proofBytes[epochOffset:shareXOffset])
+	copy(externalNullifier[:], proofBytes[rootOffset:externalNullifierOffset])
+	copy(shareX[:], proofBytes[externalNullifierOffset:shareXOffset])
 	copy(shareY[:], proofBytes[shareXOffset:shareYOffset])
 	copy(nullifier[:], proofBytes[shareYOffset:nullifierOffset])
-	copy(rlnIdentifier[:], proofBytes[nullifierOffset:rlnIdentifierOffset])
 
 	return &RateLimitProof{
-		Proof:      zkproof,
-		MerkleRoot: proofRoot,
-		ShareX:     shareX,
-		ShareY:     shareY,
-		Nullifier:  nullifier,
+		Proof:             zkproof,
+		MerkleRoot:        proofRoot,
+		ExternalNullifier: externalNullifier,
+		ShareX:            shareX,
+		ShareY:            shareY,
+		Nullifier:         nullifier,
 	}, nil
+}
 
+func (r *RLN) CreateWitness(
+	idSecretHash IDSecretHash,
+	userMessageLimit uint32,
+	messageId uint32,
+	data []byte,
+	epoch [32]byte,
+	merkleProof MerkleProof) (RLNWitnessInput, error) {
+
+	externalNullifier, err := r.Poseidon(epoch[:], RLN_IDENTIFIER[:])
+	if err != nil {
+		return RLNWitnessInput{}, fmt.Errorf("could not construct the external nullifier: %w", err)
+	}
+
+	return RLNWitnessInput{
+		IDSecretHash:      idSecretHash,
+		UserMessageLimit:  userMessageLimit,
+		MessageId:         messageId,
+		MerkleProof:       merkleProof,
+		X:                 HashToBN255(data),
+		ExternalNullifier: externalNullifier,
+	}, nil
 }
 
 func serialize32(roots [][32]byte) []byte {

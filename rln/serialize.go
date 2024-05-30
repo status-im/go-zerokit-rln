@@ -59,14 +59,22 @@ func (r RateLimitProof) serialize() []byte {
 	return proofBytes
 }
 
+// serialize converts a RLNWitnessInput to a byte seq
+// [ id_secret_hash<32> | user_message_limit<32> | message_id<32> | num_elements<8> | path_elements<var1> | num_indexes<8> | path_indexes<var2> | external_nullifier<32> ]
 func (r *RLNWitnessInput) serialize() []byte {
 	output := make([]byte, 0)
 
+	var userMessageLimitByte [32]byte
+	var messageIdByte [32]byte
+	binary.LittleEndian.PutUint32(userMessageLimitByte[0:], r.UserMessageLimit)
+	binary.LittleEndian.PutUint32(messageIdByte[0:], r.MessageId)
+
 	output = append(output, r.IDSecretHash[:]...)
+	output = append(output, userMessageLimitByte[:]...)
+	output = append(output, messageIdByte[:]...)
 	output = append(output, r.MerkleProof.serialize()...)
 	output = append(output, r.X[:]...)
-	output = append(output, r.Epoch[:]...)
-	output = append(output, r.RlnIdentifier[:]...)
+	output = append(output, r.ExternalNullifier[:]...)
 
 	return output
 }
