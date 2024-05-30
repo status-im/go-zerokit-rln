@@ -6,9 +6,9 @@ require (
 	github.com/consensys/gnark-crypto v0.12.1
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.8.4
-	github.com/waku-org/go-zerokit-rln-apple v0.0.0-20240528140707-ed6b40a98d7b
-	github.com/waku-org/go-zerokit-rln-arm v0.0.0-20240523161300-8203361a01d0
-	github.com/waku-org/go-zerokit-rln-x86_64 v0.0.0-20240523161247-6f16d12c5a86
+	github.com/waku-org/go-zerokit-rln-apple v0.0.0-20240529153423-5df5db48b69f
+	github.com/waku-org/go-zerokit-rln-arm v0.0.0-20240529153432-be2c8ac0a840
+	github.com/waku-org/go-zerokit-rln-x86_64 v0.0.0-20240529153442-f5fb416605f5
 	golang.org/x/crypto v0.18.0
 )
 
