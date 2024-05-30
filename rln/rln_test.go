@@ -603,7 +603,7 @@ func (s *RLNSuite) TestGenerateRLNProofWithWitness_VerifiesNOK() {
 		s.NoError(err)
 		s.False(verified4)
 
-		// 5) Message id goes beyond the userMessageLimit, does not verify
+		// 5) Message id goes beyond the userMessageLimit, does not generate
 		wrongMessageId := uint32(1000)
 		rlnWitness5, err := rln.CreateWitness(
 			treeElements[memberIndex].IDSecretHash,
