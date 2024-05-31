@@ -427,6 +427,14 @@ func (r *RLN) InsertMember(idComm IDCommitment, userMessageLimit uint32) error {
 	return nil
 }
 
+func (r *RLN) InsertRawLeaf(rawLeaf MerkleNode) error {
+	insertionSuccess := r.w.SetNextLeaf(rawLeaf[:])
+	if !insertionSuccess {
+		return errors.New("could not insert raw leaf")
+	}
+	return nil
+}
+
 // Insert multiple members i.e., identity commitments starting from index
 // This proc is atomic, i.e., if any of the insertions fails, all the previous insertions are rolled back
 func (r *RLN) InsertMembers(index MembershipIndex, idComms []IDCommitment) error {

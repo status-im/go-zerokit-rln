@@ -80,6 +80,37 @@ func (s *RLNSuite) TestInsertMember() {
 	s.NoError(err)
 }
 
+func (s *RLNSuite) TestInsertRawLeaf() {
+	rln, err := NewRLN()
+	s.NoError(err)
+
+	for i := 0; i < 10; i++ {
+		// Generate a membership
+		memKeys, err := rln.MembershipKeyGen(10)
+		s.NoError(err)
+
+		// Calculate the leaf ourselves
+		userMessageLimitBytes := SerializeUint32(memKeys.UserMessageLimit)
+		hashedLeaf, err := rln.Poseidon(memKeys.IDCommitment[:], userMessageLimitBytes[:])
+		s.NoError(err)
+
+		// Insert the leaf as it is
+		err = rln.InsertRawLeaf(hashedLeaf)
+		s.NoError(err)
+
+		// Get it from the tree
+		retrievedLeaf, err := rln.GetLeaf(uint(i))
+		s.NoError(err)
+
+		// Check the retrieved matches the one we added
+		s.Equal(hashedLeaf, retrievedLeaf)
+
+		// Check tree size matches
+		numLeaves := rln.LeavesSet()
+		s.Equal(uint(i+1), numLeaves)
+	}
+}
+
 func (s *RLNSuite) TestInsertMembers() {
 	rln, err := NewRLN()
 	s.NoError(err)
