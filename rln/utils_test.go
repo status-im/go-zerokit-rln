@@ -2,6 +2,7 @@ package rln
 
 import (
 	"bytes"
+	"fmt"
 	"math/big"
 	"testing"
 
@@ -50,4 +51,16 @@ func TestHashToBN255(t *testing.T) {
 	require.Equal(t,
 		[32]byte{69, 7, 140, 46, 26, 131, 147, 30, 161, 68, 2, 5, 234, 195, 227, 223, 119, 187, 116, 97, 153, 70, 71, 254, 60, 149, 54, 109, 77, 79, 105, 20},
 		out)
+}
+
+func BenchmarkHashToBN255(b *testing.B) {
+	msgSizedInKB := []int{2, 25, 100, 500}
+	for _, size := range msgSizedInKB {
+		data := make([]byte, size*1024)
+		b.Run(fmt.Sprintf("%dKBytes", size), func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				HashToBN255(data)
+			}
+		})
+	}
 }
